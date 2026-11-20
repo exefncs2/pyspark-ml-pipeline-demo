@@ -164,3 +164,9 @@ spark_env/
 # report.html
 
 node_modules/
+
+# Portfolio cleanup ignores
+.env
+.env.*
+!.env.example
+node_modules/

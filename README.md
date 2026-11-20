@@ -1,81 +1,70 @@
+# PySpark ML Pipeline Demo (S_ML)
 
-# S_ML
-這是一個 demo，旨在展示方法。
-流程圖(線上更新)
-<img src="https://docs.google.com/drawings/d/1RFKfnPxElctGqfn72ukrSXaJ9x4Rbvs2ob_SG469kb4/pub?w=1440&amp;h=1080">
+結合 **PySpark、RabbitMQ、Redis、PostgreSQL（ODS / DWH / DM 三層資料倉儲）** 與 **Vue 3** 前端的端對端資料流與機器學習預測展示專案。
 
-## 測試前置要求
+## 系統架構流程圖
 
-確保 Spark、RabbitMQ、PostgreSQL 和 Redis 已配置好環境，並使用 `.env` 文件設定連線。
+<img src="https://docs.google.com/drawings/d/1RFKfnPxElctGqfn72ukrSXaJ9x4Rbvs2ob_SG469kb4/pub?w=1440&amp;h=1080" alt="Architecture Diagram">
 
-### 安裝基本環境後
+## 資料倉儲分層設計（PostgreSQL）
 
-在 PostgreSQL 上建立 ODS（Operational Data Store）、DWH（Data Warehouse）和 DM（Data Mart）三個 Schema：
+於 PostgreSQL 建立三層 Schema：
 
-- **ODS（Operational Data Store）**：存放操作數據，支持當前操作需求，數據詳細且臨時。
-- **DWH（Data Warehouse）**：存放整合的歷史數據，支持戰略決策和數據分析。
-- **DM（Data Mart）**：針對特定業務部門或功能的子集數據存儲，從數據倉庫中提取數據並進行優化。
+- **ODS（Operational Data Store）**：存放原始操作資料，支援即時資料落地。
+- **DWH（Data Warehouse）**：存放清洗與整合後的歷史與預測資料（如 `DWH.wine_quality_predictions`）。
+- **DM（Data Mart）**：針對前端展示與特定業務主題最佳化後的資料市集。
 
-### 插入測試資料
+## 專案結構
 
-在 `notebooks` 目錄下有 [insert_test_data](notebooks/insert_test_data.ipynb)，可以直接用來灌測試資料。
+```text
+S_ML/
+├── base/        # 基礎引擎與核心元件（Spark / DB / MQ / Redis 連線封裝）
+├── center/      # 共用巨集與標準化處理流程
+├── model/       # 資料輸入輸出與機器學習模型
+├── jobs/        # 一次性或排程批次作業（例：test_001.py 寫入 Redis 並推送 RabbitMQ）
+├── worker/      # 常駐監聽作業（例：test002.py 監聽 wine_quality_exchange 寫入 DWH）
+├── interface/   # Vue 3 前端介面
+├── util/        # 共用工具函式
+└── tests/       # pytest 單元與整合測試
+notebooks/       # 資料匯入與端對端流程驗證 Notebook
+```
 
-資料來源：
-- [紅酒數據](https:archive.ics.uci.edumlmachine-learning-databaseswine-qualitywinequality-red.csv)
-- [白酒數據](https:archive.ics.uci.edumlmachine-learning-databaseswine-qualitywinequality-white.csv)
+## 快速開始
 
-### 現有的 Jobs 和 Worker
+### 1. 環境準備
 
-1. 已經有一個 jobs（`test_001.py`），可以將資料丟到 Redis 並發送到 RabbitMQ 隊列 `[wine_quality_predictions]` 
-2. 還有一個 worker （`test002.py`） 可以監聽 exchange `[wine_quality_exchange]`並輸出到DWH.wine_quality_predictions，可以透過其他工具掛載，測試只要使用[base_flow](notebooks/base_flow.ipynb)就能執行，
-特別注意：
-- RabbitMQ可能要自行建立隊列或是容器
-- test002是監聽式不會自動停下會一值等待隊列是否有新資料
+請確認本機或容器環境已備妥 **Apache Spark、RabbitMQ、PostgreSQL、Redis**，並建立環境設定檔：
 
-        
-3. vue3 demo 可用[start_work](notebooks/start_work.ipynb)啟動並到127.0.0.1:8000看
+```bash
+cp .env.example .env
+# 編輯 .env 填入實際連線資訊
+```
 
-根據[insert_test_data](notebooks/insert_test_data.ipynb)取得資料之後，用簡單的demo資料流整理
-[base_flow](notebooks/base_flow.ipynb)最後用[start_work](notebooks/start_work.ipynb)串接成頁面
-最終結果如下
-![酒類](image/image.png)
-
-
-## Structure
-
-### 基礎
-- `base`：包含基礎引擎和核心功能。
-
-### 巨集
-- `center`：處理重複功能，例如特定（固定）的處理方式或多次重複的功能。
-
-### 工具
-- `model`：輸出入模型。
-- `tests`：pytest 測試。
-- `util`：包含實用工具函數。
-
-### 工作類型
-- `jobs`：一次性（定時）作業。
-- `worker`：包含持續工作的作業，如監聽 RabbitMQ 或等待檔案進入等。
-
-### 介面
-- `interface`:介面檔html等等...
-
-## Setup
-
-安裝所需的套件：
+安裝 Python 與前端相依套件：
 
 ```bash
 pip install -r requirements.txt
-
-npm i 
+npm install
 ```
 
+### 2. 匯入測試資料
 
-## Future
+執行 [`notebooks/insert_test_data.ipynb`](notebooks/insert_test_data.ipynb) 載入 UCI Wine Quality 資料集：
 
-1. 引入 Prefect 或 Airflow 排程管理工具，後台管理 PySpark，或引入 Kubernetes 後台管理。
-2. 完整的文件。
-3. 完善 pytest 測試。
-4. 包成 docker 即裝即完成。
-5. 加入vue3的簡易瀏覽功能。 OK
+- [紅酒品質資料集（Wine Quality Red）](https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv)
+- [白酒品質資料集（Wine Quality White）](https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv)
+
+### 3. 啟動資料流與前端展示
+
+1. **批次推播 Job（`test_001.py`）**：將資料寫入 Redis 並送至 RabbitMQ 佇列 `wine_quality_predictions`。
+2. **常駐監聽 Worker（`test002.py`）**：監聽 `wine_quality_exchange` 並將結果寫入 `DWH.wine_quality_predictions`（常駐等待新訊息）。
+3. 透過 [`notebooks/base_flow.ipynb`](notebooks/base_flow.ipynb) 驗證整體資料流，再以 [`notebooks/start_work.ipynb`](notebooks/start_work.ipynb) 啟動前端服務並開啟 `http://127.0.0.1:8000` 檢視結果：
+
+![酒類預測結果展示](image/image.png)
+
+## 規劃與進度
+
+- [x] 建立 ODS / DWH / DM 分層與 PySpark + RabbitMQ + Redis 資料流
+- [x] 加入 Vue 3 簡易資料瀏覽介面
+- [ ] 引入 Airflow / Prefect 排程管理與 Kubernetes 部署
+- [ ] 補齊 Docker Compose 一鍵啟動環境與完整 pytest 測試覆蓋
