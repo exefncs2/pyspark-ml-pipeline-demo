@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
-from center.psql_to_redis import load_table_to_redis
-from center.redis_ml_to_rabbitmq import (
+# 確保直接以 `python S_ML/jobs/test_001.py` 執行時仍可正確匯入 S_ML 套件
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from S_ML.center.psql_to_redis import load_table_to_redis
+from S_ML.center.redis_ml_to_rabbitmq import (
     process_data_with_spark,
     read_data_from_redis,
     send_predictions_to_rabbitmq,
 )
-from config import WINE_REDIS_PREFIX
+from S_ML.config import WINE_REDIS_PREFIX
 
 logging.basicConfig(
     level=logging.INFO,

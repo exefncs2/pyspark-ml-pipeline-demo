@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 import pandas as pd
 
-from base.psql_connector import PsqlConnector
-from base.redis_engine import RedisEngine
-from config import WINE_REDIS_PREFIX
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from S_ML.base.psql_connector import PsqlConnector
+from S_ML.base.redis_engine import RedisEngine
+from S_ML.config import WINE_REDIS_PREFIX
 
 logger = logging.getLogger(__name__)
 

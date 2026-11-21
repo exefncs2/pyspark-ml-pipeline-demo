@@ -6,7 +6,10 @@ from typing import Any, Optional, Sequence
 
 import psycopg2
 
-from config import PostgresConfig
+try:
+    from S_ML.config import PostgresConfig
+except ModuleNotFoundError:
+    from config import PostgresConfig
 
 
 class PsqlConnector:

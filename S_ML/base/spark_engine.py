@@ -7,7 +7,10 @@ from typing import Any, Optional, Sequence
 
 from pyspark.sql import DataFrame, SparkSession
 
-from config import SparkConfig
+try:
+    from S_ML.config import SparkConfig
+except ModuleNotFoundError:
+    from config import SparkConfig
 
 logger = logging.getLogger(__name__)
 

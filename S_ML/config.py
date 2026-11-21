@@ -10,7 +10,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-INTERFACE_DIR = Path("S_ML/interface")
+# 以模組實際位置推算前端靜態目錄，確保無論從專案根目錄或 S_ML/ 內啟動都能正確載入
+S_ML_DIR = Path(__file__).resolve().parent
+INTERFACE_DIR = S_ML_DIR / "interface"
+
 WINE_EXCHANGE_NAME = "wine_quality_exchange"
 WINE_QUEUE_NAME = "wine_quality_predictions"
 WINE_ROUTING_KEY = "wine_quality"

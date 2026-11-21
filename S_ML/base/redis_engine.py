@@ -7,7 +7,10 @@ from typing import Optional
 
 import redis
 
-from config import RedisConfig
+try:
+    from S_ML.config import RedisConfig
+except ModuleNotFoundError:
+    from config import RedisConfig
 
 logger = logging.getLogger(__name__)
 

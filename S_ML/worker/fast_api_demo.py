@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from base.psql_connector import PsqlConnector
-from config import INTERFACE_DIR, WINE_TARGET_TABLE
+# 同時支援 `uvicorn S_ML.worker.fast_api_demo:app` 與於 S_ML/ 內直接啟動
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from S_ML.base.psql_connector import PsqlConnector
+from S_ML.config import INTERFACE_DIR, WINE_TARGET_TABLE
 
 app = FastAPI(
     title="PySpark ML Pipeline Demo API",

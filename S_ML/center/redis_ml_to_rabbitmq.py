@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 from typing import Optional
 
 import orjson
@@ -11,10 +13,14 @@ from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.regression import DecisionTreeRegressor
 
-from base.rabbitmq_consumer import RabbitMQConsumerEngine
-from base.redis_engine import RedisEngine
-from base.spark_engine import SparkEngine
-from config import (
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from S_ML.base.rabbitmq_consumer import RabbitMQConsumerEngine
+from S_ML.base.redis_engine import RedisEngine
+from S_ML.base.spark_engine import SparkEngine
+from S_ML.config import (
     WINE_EXCHANGE_NAME,
     WINE_QUEUE_NAME,
     WINE_REDIS_PREFIX,

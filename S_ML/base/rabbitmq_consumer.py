@@ -9,7 +9,10 @@ from typing import Callable, Optional
 
 import pika
 
-from config import RabbitMQConfig
+try:
+    from S_ML.config import RabbitMQConfig
+except ModuleNotFoundError:
+    from config import RabbitMQConfig
 
 logger = logging.getLogger(__name__)
 

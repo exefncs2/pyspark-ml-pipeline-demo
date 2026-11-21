@@ -4,22 +4,29 @@ from __future__ import annotations
 
 import logging
 import queue
+import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 
 import orjson
 
-from base.psql_connector import PsqlConnector
-from base.rabbitmq_consumer import RabbitMQConsumerEngine
-from base.spark_engine import SparkEngine
-from config import (
+# 確保直接以 `python S_ML/worker/test002.py` 執行時仍可正確匯入 S_ML 套件
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from S_ML.base.psql_connector import PsqlConnector
+from S_ML.base.rabbitmq_consumer import RabbitMQConsumerEngine
+from S_ML.base.spark_engine import SparkEngine
+from S_ML.config import (
     WINE_EXCHANGE_NAME,
     WINE_QUEUE_NAME,
     WINE_ROUTING_KEY,
     WINE_TARGET_TABLE,
 )
-from model.wine_quality_predictions_model import WineQualityPrediction
+from S_ML.model.wine_quality_predictions_model import WineQualityPrediction
 
 logging.basicConfig(
     level=logging.INFO,
