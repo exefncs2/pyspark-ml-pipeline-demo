@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import sys
 from pathlib import Path
@@ -41,7 +42,7 @@ def read_data_from_redis(redis_key: str) -> Optional[pd.DataFrame]:
     if not data_json:
         logger.warning("Redis 查無資料鍵：`%s`", redis_key)
         return None
-    return pd.read_json(data_json, orient="split")
+    return pd.read_json(io.StringIO(data_json), orient="split")
 
 
 def process_data_with_spark(data: pd.DataFrame) -> pd.DataFrame:

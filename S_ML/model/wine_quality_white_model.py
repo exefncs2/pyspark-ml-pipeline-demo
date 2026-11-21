@@ -1,8 +1,15 @@
-# spark_demo/S_ML/model/wine_quality_white_model.py
-from pydantic import BaseModel, Field
+"""白酒品質特徵資料模型（Pydantic v2）。"""
+
 from typing import Optional
 
+from pydantic import BaseModel, ConfigDict
+
+
 class WineQualityWhite(BaseModel):
+    """白酒理化指標與品質評分模型。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
     fixed_acidity: Optional[float] = None
     volatile_acidity: Optional[float] = None
     citric_acid: Optional[float] = None
@@ -15,6 +22,3 @@ class WineQualityWhite(BaseModel):
     sulphates: Optional[float] = None
     alcohol: Optional[float] = None
     quality: Optional[int] = None
-
-    class Config:
-        orm_mode = True

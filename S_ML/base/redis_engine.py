@@ -28,12 +28,12 @@ class RedisEngine:
         self.host = host or env_cfg.host
         self.port = port or env_cfg.port
         self.password = password if password is not None else env_cfg.password
-        self.client: Optional[redis.StrictRedis] = None
+        self.client: Optional[redis.Redis] = None
         self.connect()
 
     def connect(self) -> None:
         """建立並驗證 Redis 伺服器連線。"""
-        self.client = redis.StrictRedis(
+        self.client = redis.Redis(
             host=self.host,
             port=self.port,
             password=self.password,
