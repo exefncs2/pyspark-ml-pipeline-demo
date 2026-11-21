@@ -18,14 +18,15 @@
 
 ```text
 S_ML/
+├── config.py    # 參數設定檔：集中管理 PostgreSQL / Redis / RabbitMQ / Spark 不可變設定
 ├── base/        # 基礎引擎與核心元件（Spark / DB / MQ / Redis 連線封裝）
 ├── center/      # 共用巨集與標準化處理流程
-├── model/       # 資料輸入輸出與機器學習模型
+├── model/       # 資料輸入輸出與機器學習模型（Pydantic）
 ├── jobs/        # 一次性或排程批次作業（例：test_001.py 寫入 Redis 並推送 RabbitMQ）
-├── worker/      # 常駐監聽作業（例：test002.py 監聽 wine_quality_exchange 寫入 DWH）
+├── worker/      # 常駐監聽作業與查詢 API（test002.py 消費寫入 DWH、fast_api_demo.py）
 ├── interface/   # Vue 3 前端介面
 ├── util/        # 共用工具函式
-└── tests/       # pytest 單元與整合測試
+└── tests/       # 單元與整合測試
 notebooks/       # 資料匯入與端對端流程驗證 Notebook
 ```
 

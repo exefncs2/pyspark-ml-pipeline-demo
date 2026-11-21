@@ -1,20 +1,21 @@
-# spark_demo/S_ML/tests/test_psql_connector.py
+"""PostgreSQL 連線封裝整合測試（需已啟動 PostgreSQL 服務）。"""
+
 import pytest
+
 from base.psql_connector import PsqlConnector
+
 
 @pytest.fixture
 def psql_connector():
-    connector = PsqlConnector()
-    yield connector
-    connector.close()
+    with PsqlConnector() as connector:
+        yield connector
 
-def test_query(psql_connector):
-    # 測試查詢一個已知的表
-    result = psql_connector.query("SELECT 1")
-    print("result:",result)
-    assert result == [{'?column?': 1}], "應該返回[(1,)]"
 
-def test_invalid_query(psql_connector):
-    # 測試無效的查詢
+def test_query(psql_connector) -> None:
+    result = psql_connector.execute_query("SELECT 1 AS value")
+    assert result == [{"value": 1}]
+
+
+def test_invalid_query(psql_connector) -> None:
     with pytest.raises(Exception):
-        psql_connector.query("SELECT * FROM non_existent_table")
+        psql_connector.execute_query("SELECT * FROM non_existent_table")

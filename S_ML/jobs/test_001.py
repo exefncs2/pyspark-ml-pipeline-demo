@@ -1,4 +1,4 @@
-"""Batch pipeline job: PostgreSQL (ODS) -> Redis -> PySpark ML -> RabbitMQ."""
+"""批次排程進入點：PostgreSQL（ODS）-> Redis -> PySpark 預測 -> RabbitMQ。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from center.redis_ml_to_rabbitmq import (
     read_data_from_redis,
     send_predictions_to_rabbitmq,
 )
+from config import WINE_REDIS_PREFIX
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,24 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    schema = "ODS"
-    tables = ["wine_quality_red", "wine_quality_white"]
-    redis_key_prefix = "wine_quality"
+    """依序執行資料快取、模型預測與訊息推播流程。"""
+    source_schema = "ODS"
+    target_tables = ("wine_quality_red", "wine_quality_white")
 
-    for table in tables:
-        logger.info("Loading %s.%s into Redis...", schema, table)
-        load_table_to_redis(schema, table, redis_key_prefix)
+    for table_name in target_tables:
+        load_table_to_redis(source_schema, table_name, WINE_REDIS_PREFIX)
 
-    redis_key = f"{redis_key_prefix}:wine_quality_red"
+    redis_key = f"{WINE_REDIS_PREFIX}:wine_quality_red"
     data = read_data_from_redis(redis_key)
-
     if data is None:
-        logger.warning("No data found in Redis under key '%s'", redis_key)
+        logger.warning("略過預測流程：Redis 找不到鍵 `%s`", redis_key)
         return
 
     predictions = process_data_with_spark(data)
     send_predictions_to_rabbitmq(predictions)
-    logger.info("Predictions published to RabbitMQ successfully.")
 
 
 if __name__ == "__main__":

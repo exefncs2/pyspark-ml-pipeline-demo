@@ -1,29 +1,32 @@
-"""PySpark session wrapper for batch and stream-like micro-batch processing."""
+"""PySpark 執行引擎封裝模組：統一管理 SparkSession 建立與釋放。"""
 
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Optional, Sequence
 
-from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
+
+from config import SparkConfig
 
 logger = logging.getLogger(__name__)
 
 
 class SparkEngine:
-    """Manage a PySpark SparkSession lifecycle with environment configuration."""
+    """封裝 SparkSession 生命週期，支援 Context Manager 自動釋放資源。"""
 
-    def __init__(self, app_name: str = "SparkMLDemo") -> None:
-        load_dotenv()
-        master_url = os.getenv("SPARK_MASTER_URL", "local[*]")
+    def __init__(
+        self,
+        app_name: str = "SparkMLDemo",
+        config: Optional[SparkConfig] = None,
+    ) -> None:
+        resolved = config or SparkConfig.from_env()
         self.spark = (
             SparkSession.builder.appName(app_name)
-            .master(master_url)
+            .master(resolved.master_url)
             .getOrCreate()
         )
-        logger.info("Initialized SparkSession '%s' (master=%s)", app_name, master_url)
+        logger.info("已初始化 SparkSession '%s'（master=%s）", app_name, resolved.master_url)
 
     def __enter__(self) -> "SparkEngine":
         return self
@@ -32,13 +35,13 @@ class SparkEngine:
         self.stop()
 
     def run_job(self, data: Sequence[Any], columns: Sequence[str]) -> DataFrame:
-        """Create and display a DataFrame from raw tabular rows."""
+        """將原始二維資料建立為 Spark DataFrame 並輸出檢視。"""
         df = self.spark.createDataFrame(data, columns)
         df.show()
         return df
 
     def process_data(self, data: Sequence[dict[str, Any]]) -> Optional[DataFrame]:
-        """Convert incoming JSON-decoded message payloads into a Spark DataFrame."""
+        """將收到的字典清單轉為 Spark DataFrame，空資料時直接回傳 None。"""
         if not data:
             return None
         df = self.spark.createDataFrame(data)
@@ -47,12 +50,6 @@ class SparkEngine:
         return df
 
     def stop(self) -> None:
-        """Stop the SparkSession cleanly."""
+        """安全停止 SparkSession。"""
         if self.spark:
             self.spark.stop()
-
-
-if __name__ == "__main__":
-    with SparkEngine("SparkDemoTest") as engine:
-        sample_data = [("Alice", 34), ("Bob", 45), ("Cathy", 29)]
-        engine.run_job(sample_data, ["Name", "Age"])

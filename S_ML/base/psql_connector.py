@@ -1,25 +1,25 @@
-"""PostgreSQL connector wrapper with context-manager and parameterized queries."""
+"""PostgreSQL 連線封裝模組：支援 Context Manager 與參數化查詢防注入。"""
 
 from __future__ import annotations
 
-import os
 from typing import Any, Optional, Sequence
 
 import psycopg2
-from dotenv import load_dotenv
+
+from config import PostgresConfig
 
 
 class PsqlConnector:
-    """Thin PostgreSQL helper returning dict rows and supporting `with` blocks."""
+    """封裝 PostgreSQL 查詢與異動操作，強制透過參數化查詢避免 SQL 注入。"""
 
-    def __init__(self) -> None:
-        load_dotenv()
+    def __init__(self, config: Optional[PostgresConfig] = None) -> None:
+        resolved = config or PostgresConfig.from_env()
         self.connection = psycopg2.connect(
-            host=os.getenv("PG_HOST", "127.0.0.1"),
-            port=os.getenv("PG_PORT", "5432"),
-            dbname=os.getenv("PG_DB"),
-            user=os.getenv("PG_USER"),
-            password=os.getenv("PG_PASSWORD"),
+            host=resolved.host,
+            port=resolved.port,
+            dbname=resolved.database,
+            user=resolved.user,
+            password=resolved.password,
         )
 
     def __enter__(self) -> "PsqlConnector":
@@ -33,7 +33,7 @@ class PsqlConnector:
         sql_query: str,
         params: Optional[Sequence[Any]] = None,
     ) -> list[dict[str, Any]]:
-        """Execute a SELECT query and return rows as dictionaries."""
+        """執行查詢並以字典清單回傳結果列。"""
         with self.connection.cursor() as cursor:
             cursor.execute(sql_query, params)
             columns = [desc[0] for desc in cursor.description]
@@ -44,12 +44,12 @@ class PsqlConnector:
         sql_command: str,
         params: Optional[Sequence[Any]] = None,
     ) -> None:
-        """Execute a DDL/DML statement with optional parameters and commit."""
+        """執行 DDL／DML 指令並提交交易。"""
         with self.connection.cursor() as cursor:
             cursor.execute(sql_command, params)
         self.connection.commit()
 
     def close_connection(self) -> None:
-        """Close the underlying PostgreSQL connection if still open."""
+        """若連線尚未關閉則安全釋放。"""
         if self.connection and not self.connection.closed:
             self.connection.close()

@@ -1,4 +1,4 @@
-"""RabbitMQ consumer worker: consumes predictions, transforms via PySpark, writes to PostgreSQL DWH."""
+"""RabbitMQ 消費端常駐服務：接收預測訊息並經 PySpark 處理後寫入 PostgreSQL DWH。"""
 
 from __future__ import annotations
 
@@ -8,15 +8,18 @@ import threading
 import time
 import uuid
 
-import orjson as json
-from dotenv import load_dotenv
+import orjson
 
 from base.psql_connector import PsqlConnector
 from base.rabbitmq_consumer import RabbitMQConsumerEngine
 from base.spark_engine import SparkEngine
+from config import (
+    WINE_EXCHANGE_NAME,
+    WINE_QUEUE_NAME,
+    WINE_ROUTING_KEY,
+    WINE_TARGET_TABLE,
+)
 from model.wine_quality_predictions_model import WineQualityPrediction
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,27 +27,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+POLL_INTERVAL_SECONDS = 1
 local_queue: queue.Queue = queue.Queue()
-
-EXCHANGE_NAME = "wine_quality_exchange"
-QUEUE_NAME = "wine_quality_predictions"
-ROUTING_KEY = "wine_quality"
-TARGET_TABLE = "wine_quality_predictions"
 
 
 def on_message(body: bytes) -> None:
-    """Decode incoming RabbitMQ message and enqueue for micro-batch Spark processing."""
-    message = json.loads(body)
-    logger.info("Enqueued message from RabbitMQ: %s", message)
+    """解析 RabbitMQ 訊息並放入執行緒安全佇列等待微批次處理。"""
+    message = orjson.loads(body)
+    logger.info("收到 RabbitMQ 預測訊息：%s", message)
     local_queue.put(message)
 
 
 def process_messages() -> None:
-    """Drain queued messages, run Spark processing, and persist validated rows to PostgreSQL."""
+    """排空佇列中的累積訊息，經 Spark 轉換後以參數化 SQL 寫入 DWH。"""
     messages = []
     while not local_queue.empty():
         messages.append(local_queue.get())
-
     if not messages:
         return
 
@@ -55,20 +53,20 @@ def process_messages() -> None:
         pandas_df = processed_df.toPandas()
 
     create_table_sql = f"""
-        CREATE TABLE IF NOT EXISTS "DWH".{TARGET_TABLE} (
+        CREATE TABLE IF NOT EXISTS "DWH".{WINE_TARGET_TABLE} (
             id uuid PRIMARY KEY,
             prediction FLOAT,
             residual_sugar FLOAT
         );
     """
     insert_sql = f"""
-        INSERT INTO "DWH".{TARGET_TABLE} (id, prediction, residual_sugar)
+        INSERT INTO "DWH".{WINE_TARGET_TABLE} (id, prediction, residual_sugar)
         VALUES (%s, %s, %s);
     """
 
     with PsqlConnector() as psql:
         psql.execute_command(create_table_sql)
-        inserted = 0
+        inserted_count = 0
         for _, row in pandas_df.iterrows():
             record = WineQualityPrediction(
                 id=str(uuid.uuid4()),
@@ -76,34 +74,34 @@ def process_messages() -> None:
                 residual_sugar=float(row["residual_sugar"]),
             )
             psql.execute_command(insert_sql, (record.id, record.prediction, record.residual_sugar))
-            inserted += 1
-        logger.info("Inserted %d prediction row(s) into DWH.%s", inserted, TARGET_TABLE)
+            inserted_count += 1
+        logger.info("已寫入 %d 筆預測結果至 DWH.%s", inserted_count, WINE_TARGET_TABLE)
 
 
 def consume_predictions() -> None:
-    """Start blocking RabbitMQ consumer loop."""
+    """啟動 RabbitMQ 消費循環。"""
     consumer = RabbitMQConsumerEngine(
-        exchange=EXCHANGE_NAME,
+        exchange=WINE_EXCHANGE_NAME,
         exchange_type="direct",
-        queue=QUEUE_NAME,
-        routing_key=ROUTING_KEY,
+        queue=WINE_QUEUE_NAME,
+        routing_key=WINE_ROUTING_KEY,
         callback=on_message,
         durable=True,
         auto_delete=False,
     )
-    logger.info("Listening on queue '%s'. Press CTRL+C to exit.", QUEUE_NAME)
+    logger.info("開始監聽佇列 `%s`，按 CTRL+C 結束", WINE_QUEUE_NAME)
     consumer.start_consuming()
 
 
 def monitor_and_process() -> None:
-    """Poll the thread-safe buffer and trigger micro-batch persistence."""
+    """定時輪詢本機佇列並觸發微批次落地寫入。"""
     while True:
         if not local_queue.empty():
             try:
                 process_messages()
             except Exception as exc:
-                logger.exception("Failed while processing prediction batch: %s", exc)
-        time.sleep(1)
+                logger.exception("處理預測微批次時發生錯誤：%s", exc)
+        time.sleep(POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
@@ -112,4 +110,4 @@ if __name__ == "__main__":
     try:
         monitor_and_process()
     except KeyboardInterrupt:
-        logger.info("Shutting down prediction worker...")
+        logger.info("收到中斷訊號，正在關閉預測消費端服務")

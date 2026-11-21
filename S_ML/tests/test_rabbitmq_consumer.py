@@ -1,26 +1,31 @@
-# spark_demo/S_ML/tests/test_rabbitmq_consumer.py
+"""RabbitMQ 消費端引擎單元測試。"""
+
 import pytest
-import pika
-from base.rabbitmq_consumer import RabbitMQConsumer
+
+from base.rabbitmq_consumer import RabbitMQConsumerEngine
+
 
 @pytest.fixture
 def mock_rabbitmq(mocker):
-    # 模擬 BlockingConnection
-    mock_connection = mocker.patch('pika.BlockingConnection')
-    # 模擬 channel 方法
+    mock_connection = mocker.patch("pika.BlockingConnection")
     mock_channel = mocker.Mock()
     mock_connection.return_value.channel.return_value = mock_channel
     return mock_channel
 
-def test_start_consuming(mock_rabbitmq):
-    consumer = RabbitMQConsumer()
-    consumer.start_consuming()
-    mock_rabbitmq.basic_consume.assert_called_once_with(queue='task_queue', on_message_callback=consumer.callback, auto_ack=True)
-    mock_rabbitmq.start_consuming.assert_called_once()
 
-def test_callback(mocker, mock_rabbitmq):
-    consumer = RabbitMQConsumer()
-    mock_print = mocker.patch('builtins.print')
-    body = "test message"
-    consumer.callback(None, None, None, body)
-    mock_print.assert_called_with(f"Received {body}")
+def test_setup_declares_exchange_and_queue(mock_rabbitmq) -> None:
+    consumer = RabbitMQConsumerEngine(
+        exchange="test_exchange",
+        exchange_type="direct",
+        queue="test_queue",
+        routing_key="test_key",
+        callback=lambda _body: None,
+    )
+    mock_rabbitmq.exchange_declare.assert_called_once()
+    mock_rabbitmq.queue_declare.assert_called_once_with(queue="test_queue", durable=True)
+    mock_rabbitmq.queue_bind.assert_called_once_with(
+        queue="test_queue",
+        exchange="test_exchange",
+        routing_key="test_key",
+    )
+    consumer.close()

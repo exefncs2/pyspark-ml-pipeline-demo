@@ -1,98 +1,97 @@
-import os
+"""機器學習預測推播模組：由 Redis 載入特徵、PySpark 訓練預測後送往 RabbitMQ。"""
+
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+import orjson
 import pandas as pd
-from pyspark.sql import SparkSession
+from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.regression import DecisionTreeRegressor
-from pyspark.ml.evaluation import RegressionEvaluator
-from base.redis_engine import RedisEngine
-from base.psql_connector import PsqlConnector
+
 from base.rabbitmq_consumer import RabbitMQConsumerEngine
+from base.redis_engine import RedisEngine
 from base.spark_engine import SparkEngine
-from dotenv import load_dotenv
-import orjson
-import logging
+from config import (
+    WINE_EXCHANGE_NAME,
+    WINE_QUEUE_NAME,
+    WINE_REDIS_PREFIX,
+    WINE_ROUTING_KEY,
+)
 
-load_dotenv()
-
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def read_data_from_redis(redis_key):
+TARGET_LABEL_COL = "residual_sugar"
+TRAIN_TEST_SPLIT_WEIGHTS = [0.8, 0.2]
+RANDOM_SEED = 1234
+
+
+def read_data_from_redis(redis_key: str) -> Optional[pd.DataFrame]:
+    """由 Redis 讀取 JSON 格式資料並還原為 Pandas DataFrame。"""
     redis_engine = RedisEngine()
     data_json = redis_engine.get_value(redis_key)
-    if data_json:
-        data = pd.read_json(data_json, orient='split')
-        return data
-    else:
-        logger.error(f"No data found for key: {redis_key}")
+    if not data_json:
+        logger.warning("Redis 查無資料鍵：`%s`", redis_key)
         return None
+    return pd.read_json(data_json, orient="split")
 
-def process_data_with_spark(data):
-    # 初始化SparkSession
-    spark_engine = SparkEngine("WineQualityPrediction")
-    spark = spark_engine.spark
 
-    # 將Pandas DataFrame轉換為Spark DataFrame
-    df = spark.createDataFrame(data)
+def process_data_with_spark(data: pd.DataFrame) -> pd.DataFrame:
+    """以 PySpark 決策樹回歸模型進行訓練與測試集預測，回傳預測結果 DataFrame。"""
+    feature_columns = [col for col in data.columns if col != TARGET_LABEL_COL]
 
-    # 特徵選擇
-    feature_columns = data.columns.tolist()
-    feature_columns.remove('residual_sugar')  # 假設 'residual_sugar' 是我們要預測的列
-    assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
-    df = assembler.transform(df)
+    with SparkEngine("WineQualityPrediction") as spark_engine:
+        spark_df = spark_engine.spark.createDataFrame(data)
+        assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
+        assembled_df = assembler.transform(spark_df)
 
-    # 分割數據集
-    train_data, test_data = df.randomSplit([0.8, 0.2], seed=1234)
+        train_df, test_df = assembled_df.randomSplit(TRAIN_TEST_SPLIT_WEIGHTS, seed=RANDOM_SEED)
+        model = DecisionTreeRegressor(labelCol=TARGET_LABEL_COL, featuresCol="features").fit(train_df)
+        predictions = model.transform(test_df)
 
-    # 構建決策樹模型
-    dt = DecisionTreeRegressor(labelCol="residual_sugar", featuresCol="features")
-    model = dt.fit(train_data)
+        evaluator = RegressionEvaluator(
+            labelCol=TARGET_LABEL_COL,
+            predictionCol="prediction",
+            metricName="rmse",
+        )
+        rmse = evaluator.evaluate(predictions)
+        logger.info("測試集均方根誤差（RMSE）=%.4f", rmse)
+        return predictions.select("prediction", TARGET_LABEL_COL).toPandas()
 
-    # 預測
-    predictions = model.transform(test_data)
 
-    # 評估模型
-    evaluator = RegressionEvaluator(labelCol="residual_sugar", predictionCol="prediction", metricName="rmse")
-    rmse = evaluator.evaluate(predictions)
-    logger.info(f"Root Mean Squared Error (RMSE) on test data = {rmse}")
-
-    # 返回預測結果
-    return predictions.select("prediction", "residual_sugar").toPandas()
-
-def send_predictions_to_rabbitmq(predictions,durable=True, auto_delete=False):
-    # 設置 RabbitMQ 連接
-    exchange = "wine_quality_exchange"
-    queue = "wine_quality_predictions"
-    routing_key = "wine_quality"
-
-    rabbitmq_engine = RabbitMQConsumerEngine(
-        exchange=exchange,
-        exchange_type='direct',
-        queue=queue,
-        callback="test",
-        routing_key=routing_key,
+def send_predictions_to_rabbitmq(
+    predictions: pd.DataFrame,
+    durable: bool = True,
+    auto_delete: bool = False,
+) -> int:
+    """將預測結果逐筆序列化並發佈至 RabbitMQ，回傳成功發佈筆數。"""
+    with RabbitMQConsumerEngine(
+        exchange=WINE_EXCHANGE_NAME,
+        exchange_type="direct",
+        queue=WINE_QUEUE_NAME,
+        routing_key=WINE_ROUTING_KEY,
+        callback=None,
         durable=durable,
-        auto_delete=auto_delete
-    )
+        auto_delete=auto_delete,
+    ) as mq_engine:
+        published_count = 0
+        for _, row in predictions.iterrows():
+            message = orjson.dumps(row.to_dict())
+            mq_engine.channel.basic_publish(
+                exchange=WINE_EXCHANGE_NAME,
+                routing_key=WINE_ROUTING_KEY,
+                body=message,
+            )
+            published_count += 1
+        logger.info("已成功發佈 %d 筆預測結果至 RabbitMQ 佇列 `%s`", published_count, WINE_QUEUE_NAME)
+        return published_count
 
-    # 發送預測結果
-    for index, row in predictions.iterrows():
-        message = orjson.dumps(row.to_dict())
-        rabbitmq_engine.channel.basic_publish(exchange=exchange, routing_key=routing_key, body=message)
-        logger.info(f"Sent prediction to RabbitMQ: {message}")
-
-    # 關閉連接
-    rabbitmq_engine.connection.close()
 
 if __name__ == "__main__":
-    # 從 Redis 中讀取數據
-    redis_key = "wine_quality:wine_quality_red"
-    data = read_data_from_redis(redis_key)
-
-    if data is not None:
-        # 使用 PySpark 處理數據並進行預測
-        predictions = process_data_with_spark(data)
-
-        # 將預測結果發送到 RabbitMQ
-        send_predictions_to_rabbitmq(predictions)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(message)s")
+    df = read_data_from_redis(f"{WINE_REDIS_PREFIX}:wine_quality_red")
+    if df is not None:
+        pred_df = process_data_with_spark(df)
+        send_predictions_to_rabbitmq(pred_df)
