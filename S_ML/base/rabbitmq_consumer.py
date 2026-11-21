@@ -20,7 +20,7 @@ class RabbitMQConsumerEngine:
 
         self.credentials = pika.PlainCredentials(os.getenv("RABBITMQ_USER"), os.getenv("RABBITMQ_PASSWORD"))
         self.parameters = pika.ConnectionParameters(
-            'localhost', credentials=self.credentials, heartbeat=heartbeat)
+            os.getenv('RABBITMQ_HOST', 'localhost'), credentials=self.credentials, heartbeat=heartbeat)
         self.connection = pika.BlockingConnection(self.parameters)
         self.channel = self.connection.channel()
 

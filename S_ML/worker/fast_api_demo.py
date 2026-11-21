@@ -1,25 +1,32 @@
+"""FastAPI endpoint serving DWH wine quality predictions to the Vue 3 UI."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
 from fastapi import FastAPI
-from base.psql_connector import PsqlConnector
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import os
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="S_ML/interface"), name="static")
+from fastapi.staticfiles import StaticFiles
+
+from base.psql_connector import PsqlConnector
+
+INTERFACE_DIR = Path("S_ML/interface")
+
+app = FastAPI(
+    title="PySpark ML Pipeline Demo API",
+    description="Serves DWH prediction results for the Vue 3 dashboard",
+    version="1.0.0",
+)
+app.mount("/static", StaticFiles(directory=str(INTERFACE_DIR)), name="static")
+
 
 @app.get("/")
 def read_root():
-    return FileResponse("S_ML/interface/vue3_demo.html")
+    return FileResponse(INTERFACE_DIR / "vue3_demo.html")
+
 
 @app.get("/predictions/")
 def get_predictions():
-    # 实例化 PsqlConnector
-    connector = PsqlConnector()
-    
-    # 执行查询
     query = 'SELECT * FROM "DWH".wine_quality_predictions'
-    results = connector.execute_query(query)
-    
-    # 关闭数据库连接
-    connector.close_connection()
-    
-    return results
+    with PsqlConnector() as connector:
+        return connector.execute_query(query)
